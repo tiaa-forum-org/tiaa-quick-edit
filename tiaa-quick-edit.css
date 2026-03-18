@@ -1,0 +1,126 @@
+/**
+ * tiaa-quick-edit.css
+ *
+ * Admin styles for the TIAA Quick Edit Fields plugin.
+ *
+ * Covers:
+ *  - Sort Order column badge in the Posts list table
+ *  - TIAA fieldset layout inside the Quick Edit panel
+ *  - Input and textarea focus states
+ *
+ * Design tokens (matching Elementor Global Colors):
+ *  Navy  #2b2e60  · Teal  #31bba6  · Coral  #f37758
+ *
+ * @package   TIAAQuickEdit
+ * @since     1.0.0
+ * @version   1.1.0
+ */
+
+
+/* ── Sort Order column badge ──────────────────────────────────────── */
+
+/**
+ * Styled badge shown in the Sort Order column for target-category posts.
+ * The .tiaa-ord alias is kept for back-compat with any templates that
+ * may reference it directly.
+ */
+.tiaa-sort-order-value,
+.tiaa-ord {
+	display: inline-block;
+	background: #f0faf9;
+	color: #2b2e60;
+	border: 1px solid #c9ecea;
+	border-radius: 4px;
+	padding: 2px 8px;
+	font-size: 12px;
+	font-weight: 600;
+	min-width: 28px;
+	text-align: center;
+}
+
+/** Em dash placeholder for posts that are not in a target category. */
+.tiaa-sort-order-na,
+.tiaa-na {
+	color: #bbb;
+	font-size: 13px;
+}
+
+
+/* ── Quick Edit fieldset container ───────────────────────────────── */
+
+/** Top border uses teal to distinguish the TIAA section from WP core fields. */
+.tiaa-qe-fieldset {
+	border-top: 2px solid #31bba6;
+	padding-top: 12px !important;
+	margin-top: 8px;
+}
+
+
+/* ── Section header ──────────────────────────────────────────────── */
+
+.tiaa-qe-section-label,
+.tiaa-qe-label-hdr {
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #31bba6;
+	margin-bottom: 10px;
+}
+
+
+/* ── Label rows ──────────────────────────────────────────────────── */
+
+.tiaa-qe-label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 12px;
+}
+
+.tiaa-qe-label .title {
+	color: #2b2e60;
+	font-weight: 600;
+	font-size: 13px;
+}
+
+/** Hint text appears below the field label, above the input. */
+.tiaa-qe-hint {
+	font-size: 11px;
+	color: #777;
+	font-style: italic;
+	line-height: 1.4;
+}
+
+
+/* ── Inputs ──────────────────────────────────────────────────────── */
+
+.tiaa-qe-fieldset input[type="number"].tiaa-menu-order {
+	width: 90px;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 14px;
+	color: #2b2e60;
+}
+
+/** Teal focus ring on both the number input and the excerpt textarea. */
+.tiaa-qe-fieldset input[type="number"].tiaa-menu-order:focus,
+.tiaa-qe-fieldset textarea.tiaa-post-excerpt:focus {
+	border-color: #31bba6;
+	outline: none;
+	box-shadow: 0 0 0 2px rgba(49, 187, 166, 0.2);
+}
+
+.tiaa-qe-fieldset textarea.tiaa-post-excerpt {
+	width: 100%;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 6px 8px;
+	font-size: 13px;
+	color: #2b2e60;
+	font-family: inherit;
+	line-height: 1.5;
+	resize: vertical;
+	box-sizing: border-box;
+}
