@@ -37,6 +37,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'TIAA_QE_CATEGORY_SLUGS', array(
 	'hot-topics',
 	'discourse-categories',
+    'other-orgs',
 ) );
 
 

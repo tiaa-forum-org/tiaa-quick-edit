@@ -11,7 +11,7 @@
 ## What This Does
 
 Adds two fields to the WordPress **Quick Edit** panel for posts in the
-`hot-topics` and `discourse-categories` categories, and adds a sortable
+`hot-topics`, `other-orgs` and `discourse-categories` categories, and adds a sortable
 **Sort Order** column to the Posts list table.
 
 | Field | Controls | Why it matters |
