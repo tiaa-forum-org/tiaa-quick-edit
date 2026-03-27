@@ -27,9 +27,9 @@
 .tiaa-sort-order-value,
 .tiaa-ord {
 	display: inline-block;
-	background: #f0faf9;
+	background: none;
 	color: #2b2e60;
-	border: 1px solid #c9ecea;
+	border: none;
 	border-radius: 4px;
 	padding: 2px 8px;
 	font-size: 12px;
