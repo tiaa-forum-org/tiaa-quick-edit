@@ -5,8 +5,8 @@
  * Description:       Adds Sort Order (menu_order) and Excerpt fields to the WordPress Quick Edit
  *                    panel for posts in the hot-topics, discourse-categories, and other-orgs
  *                    categories. Also adds an Excerpt field to the Pages Quick Edit panel (all
- *                    pages), and adds a sortable Sort Order column to the Posts list table.
- * Version:           1.5.1
+ *                    pages), and adds a sortable Sort Order column for menu_order to the Posts list table.
+ * Version:           1.5.2
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Lew Grothe, TIAA Forum Admin Platform Sub-team
@@ -35,11 +35,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * @since 1.0.0
  */
-define( 'TIAA_QE_CATEGORY_SLUGS', array(
+const TIAA_QE_CATEGORY_SLUGS = array(
 	'hot-topics',
 	'discourse-categories',
 	'other-orgs',
-) );
+);
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -53,12 +53,13 @@ define( 'TIAA_QE_CATEGORY_SLUGS', array(
  * requires the global $post to be set, which is not guaranteed on the admin
  * list screen or during AJAX requests.
  *
- * @since 1.0.0
- *
  * @param int $post_id WordPress post ID to test.
+ *
  * @return bool True if the post is in at least one TIAA_QE_CATEGORY_SLUGS category.
+ *@since 1.0.0
+ *
  */
-function tiaa_qe_is_target_post( $post_id ) {
+function tiaa_qe_is_target_post( int $post_id ): bool {
 	$terms = wp_get_post_terms( $post_id, 'category', array( 'fields' => 'slugs' ) );
 	if ( is_wp_error( $terms ) || empty( $terms ) ) {
 		return false;
@@ -88,7 +89,7 @@ function tiaa_qe_is_target_post( $post_id ) {
  * @return array Modified column definitions with Sort Order inserted after Title.
  */
 add_filter( 'manage_posts_columns', 'tiaa_qe_add_columns' );
-function tiaa_qe_add_columns( $columns ) {
+function tiaa_qe_add_columns( $columns ): array {
 	$new = array();
 	foreach ( $columns as $key => $label ) {
 		$new[ $key ] = $label;
@@ -112,7 +113,7 @@ function tiaa_qe_add_columns( $columns ) {
  * @return void
  */
 add_action( 'manage_posts_custom_column', 'tiaa_qe_render_column', 10, 2 );
-function tiaa_qe_render_column( $column, $post_id ) {
+function tiaa_qe_render_column( $column, $post_id ): void {
 	if ( $column !== 'tiaa_sort_order' ) {
 		return;
 	}
@@ -161,7 +162,7 @@ function tiaa_qe_sortable_columns( $cols ) {
  * @return array Modified column definitions with Excerpt inserted after Title.
  */
 add_filter( 'manage_pages_columns', 'tiaa_qe_add_page_columns' );
-function tiaa_qe_add_page_columns( $columns ) {
+function tiaa_qe_add_page_columns( $columns ): array {
 	$new = array();
 	foreach ( $columns as $key => $label ) {
 		$new[ $key ] = $label;
@@ -186,7 +187,7 @@ function tiaa_qe_add_page_columns( $columns ) {
  * @return void
  */
 add_action( 'manage_pages_custom_column', 'tiaa_qe_render_page_column', 10, 2 );
-function tiaa_qe_render_page_column( $column, $post_id ) {
+function tiaa_qe_render_page_column( $column, $post_id ): void {
 	if ( $column !== 'tiaa_page_excerpt' ) {
 		return;
 	}
@@ -220,7 +221,7 @@ function tiaa_qe_render_page_column( $column, $post_id ) {
  * @return void
  */
 add_action( 'quick_edit_custom_box', 'tiaa_qe_quick_edit_fields', 10, 2 );
-function tiaa_qe_quick_edit_fields( $column_name, $post_type ) {
+function tiaa_qe_quick_edit_fields( $column_name, $post_type ): void {
 	if ( $post_type === 'page' ) {
 		return; // Pages handled separately below.
 	}
@@ -235,7 +236,7 @@ function tiaa_qe_quick_edit_fields( $column_name, $post_type ) {
 
 			<label class="tiaa-qe-label">
 				<span class="title">Sort Order</span>
-				<span class="tiaa-qe-hint">Controls card display order. Lower numbers appear first (e.g. 10, 20, 30). Leave blank to make no change.</span>
+				<span class="tiaa-qe-hint">Controls card display order. Lower numbers appear first (e.g., 10, 20, 30). Leave blank to make no change.</span>
 				<input type="number"
 				       name="tiaa_menu_order"
 				       class="tiaa-menu-order"
@@ -282,7 +283,7 @@ function tiaa_qe_quick_edit_fields( $column_name, $post_type ) {
  * @return void
  */
 add_action( 'quick_edit_custom_box', 'tiaa_qe_page_quick_edit_fields', 10, 2 );
-function tiaa_qe_page_quick_edit_fields( $column_name, $post_type ) {
+function tiaa_qe_page_quick_edit_fields( $column_name, $post_type ): void {
 	if ( $post_type !== 'page' ) {
 		return;
 	}
@@ -336,7 +337,7 @@ function tiaa_qe_page_quick_edit_fields( $column_name, $post_type ) {
  * @return void
  */
 add_action( 'save_post', 'tiaa_qe_save_quick_edit', 10, 2 );
-function tiaa_qe_save_quick_edit( $post_id, $post ) {
+function tiaa_qe_save_quick_edit( $post_id, $post ): void {
 	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
 		return;
 	}
@@ -407,7 +408,7 @@ function tiaa_qe_save_quick_edit( $post_id, $post ) {
  * @return void
  */
 add_action( 'admin_enqueue_scripts', 'tiaa_qe_enqueue_scripts' );
-function tiaa_qe_enqueue_scripts( $hook ) {
+function tiaa_qe_enqueue_scripts( $hook ): void {
 	// Only load on the Posts and Pages list screens (edit.php).
 	// The Elementor editor runs on post.php, not edit.php, so this check
 	// is the primary guard against loading in the wrong context.
@@ -464,7 +465,7 @@ function tiaa_qe_enqueue_scripts( $hook ) {
  * @return void Sends JSON response and exits.
  */
 add_action( 'wp_ajax_tiaa_qe_get_post_data', 'tiaa_qe_ajax_get_post_data' );
-function tiaa_qe_ajax_get_post_data() {
+function tiaa_qe_ajax_get_post_data(): void {
 	check_ajax_referer( 'tiaa_qe_get_post_data', 'nonce' );
 
 	$post_id = intval( $_POST['post_id'] ?? 0 );
@@ -473,11 +474,11 @@ function tiaa_qe_ajax_get_post_data() {
 	}
 
 	$post      = get_post( $post_id );
-	$raw_order = $post ? intval( $post->menu_order ) : 0;
+	$raw_order = $post ? $post->menu_order : 0;
 	$post_type = $post ? $post->post_type : 'post';
 
 	// Pages always show the excerpt field — no category gate needed.
-	$is_target = ( $post_type === 'page' ) ? true : tiaa_qe_is_target_post( $post_id );
+	$is_target = $post_type === 'page' || tiaa_qe_is_target_post( $post_id );
 
 	wp_send_json_success( array(
 		'is_target'  => $is_target,

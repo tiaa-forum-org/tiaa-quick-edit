@@ -1,8 +1,8 @@
 # TIAA Quick Edit Fields
 
-**Version:** 1.5.1  
-**Updated:** 2026-03-27  
-**Location in repo:** `plugins/tiaa-quick-edit/`  
+**Version:** 1.5.2  
+**Updated:** 2026-04-05  
+**Location in repo:** `tiaa-forum-org/tiaa-quick-edit/`  
 **Plugin slug:** `tiaa-quick-edit`  
 **Text domain:** `tiaa-quick-edit`
 
@@ -15,13 +15,13 @@ Adds two fields to the WordPress **Quick Edit** panel for posts in the
 **Sort Order** column to the Posts list table.
 
 Also adds an **Excerpt** field to the Quick Edit panel for **all Pages**, and
-adds an **Excerpt** column to the Pages list table so excerpt status is visible
+adds an **Excerpt** column to the Pages list table, so excerpt status is visible
 at a glance.
 
-| Field | Post types | Controls | Why it matters |
-|---|---|---|---|
-| **Sort Order** | Posts (target categories only) | `menu_order` in `wp_posts` | Controls the order cards appear in Elementor Loop Grids sorted by Menu Order |
-| **Excerpt** | Posts (target categories) + all Pages | `post_excerpt` in `wp_posts` | The summary text shown on cards; used by Yoast SEO for meta descriptions |
+| Field          | Post types                            | Controls                                     | Why it matters                                                               |
+|----------------|---------------------------------------|----------------------------------------------|------------------------------------------------------------------------------|
+| **Sort Order** | Posts (target categories only)        | `menu_order` in `wp_posts`                   | Controls the order cards appear in Elementor Loop Grids sorted by Menu Order |
+| **Excerpt**    | Posts (target categories) + all Pages | `post_excerpt` in `wp_posts`  and `wp_pages` | The summary text shown on cards; used by Yoast SEO for meta descriptions     |
 
 ---
 
@@ -52,7 +52,7 @@ tiaa-quick-edit/
 
 ### Updating Sort Order (Posts only)
 
-1. Hover over any post row → click **Quick Edit**.
+1. Hover over any `post` row → click **Quick Edit**.
 2. The **Sort Order** field pre-fills with the current value (blank if unset).
 3. Enter a number. Leave blank to make no change.
 4. Click **Update**.
@@ -112,7 +112,7 @@ membership or form-action flows.
 Posts use a category gate — the TIAA fieldset is hidden by default and shown
 via AJAX only after confirming the post belongs to a target category. Pages
 skip this gate entirely: the Excerpt fieldset is always visible for all pages,
-because all pages may benefit from an excerpt (used by Yoast SEO for meta
+because all pages may benefit from an excerpt (used by Yoast SEO for `meta`
 descriptions and surfaceable in Elementor via the Post Excerpt dynamic tag).
 
 Sort Order is intentionally omitted from Page Quick Edit. WordPress natively
@@ -145,14 +145,14 @@ to avoid re-triggering the `save_post` hook and causing an infinite loop.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| Fields don't appear in Quick Edit for a post | Confirm the plugin is activated; confirm the post is in a target category |
+| Symptom                                               | Fix                                                                       |
+|-------------------------------------------------------|---------------------------------------------------------------------------|
+| Fields don't appear in Quick Edit for a post          | Confirm the plugin is activated; confirm the post is in a target category |
 | Excerpt field doesn't appear in Quick Edit for a page | Confirm the plugin is activated; confirm you are on the Pages list screen |
-| Sort Order column is missing | Click **Screen Options** (top-right on Posts screen) and check Sort Order |
-| Excerpt column missing on Pages | Click **Screen Options** on the Pages screen and check Excerpt |
-| Excerpt not pre-filling | Check DevTools Network tab for a failed `admin-ajax.php` call |
-| Changes not saving | Nonce may have expired (page open > 12 hrs) — refresh and retry |
+| Sort Order column is missing                          | Click **Screen Options** (top-right on Posts screen) and check Sort Order |
+| Excerpt column missing on Pages                       | Click **Screen Options** on the Pages screen and check Excerpt            |
+| Excerpt not pre-filling                               | Check DevTools Network tab for a failed `admin-ajax.php` call             |
+| Changes not saving                                    | Nonce may have expired (page open > 12 hrs) — refresh and retry           |
 
 ---
 
@@ -176,7 +176,7 @@ wp_enqueue_script(
 );
 ```
 
-2. Open **Posts** or **Pages** and open browser DevTools → Console tab.
+2. Open **Posts** or **Pages** and open the browser DevTools → Console tab.
 3. Click Quick Edit on any post or page.
 4. Copy the `[TIAA-QE]` log lines and share for diagnosis.
 
@@ -185,26 +185,27 @@ wp_enqueue_script(
 ---
 
 ## Changelog
-
+### 1.5.2 — 2026-04-05
+- changed to add `excerpt` to pages as well as posts Quick Edit
 ### 1.5.1 — 2026-03-27
 - Fixed: JS loading in Elementor editor context caused `inlineEditPost` TypeError
   that interrupted Elementor's widget config AJAX request, leaving the editor
-  sidebar greyed out on first load.
+  sidebar greyed out on a first page load.
 - Fix 1 (PHP): Tightened `$typenow` check in enqueue — `! empty( $typenow )`
   now correctly treats an empty `$typenow` as `'post'` (safe on `edit.php`)
-  while still blocking non-target post types.
-- Fix 2 (JS): Added `inlineEditPost === 'undefined'` guard at top of script.
-  Belt-and-suspenders defence — if the script ever loads outside `edit.php`,
+  while still blocking non-target `post` types.
+- Fix 2 (JS): Added `inlineEditPost === 'undefined'` guard at top of a script.
+  Belt-and-suspenders defense — if the script ever loads outside `edit.php`,
   it exits immediately rather than throwing an uncaught error.
 
 ### 1.5.0 — 2026-03-27
 - Added Excerpt Quick Edit field for all Pages (no category gate).
-- Added Excerpt column to Pages list table (60-char truncated preview).
+- Added the Excerpt column to the Pages list table (60-char truncated preview).
 - Sort Order field intentionally omitted from Pages (WordPress manages page
   order natively via Page Attributes).
 - `save_post` handler extended to accept `page` post type.
 - Enqueue hook extended to load on the Pages list screen.
-- AJAX handler returns `post_type` so JS can adjust field behaviour.
+- AJAX handler returns `post_type` so JS can adjust field behavior.
 - JS updated to detect page context via `tiaa-qe-fieldset-page` CSS class.
 
 ### 1.4.0 — 2026-03-17
@@ -216,7 +217,7 @@ wp_enqueue_script(
 
 ### 1.3.0
 - Compatibility fix for WordPress 6.7+ where `inlineEditPost.edit()` receives
-  the trigger button element instead of a numeric post ID.
+  the trigger button element instead of a numeric `post` ID.
 
 ### 1.2.0
 - Added `tiaa-quick-edit-debug.js` diagnostic helper.
