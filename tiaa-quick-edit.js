@@ -1,30 +1,20 @@
 /**
- * tiaa-quick-edit.js
+ * TIAA Quick Edit Fields — tiaa-quick-edit.js
  *
- * Handles Quick Edit population and post-save cell updates for the
- * TIAA Quick Edit Fields plugin.
+ * Intercepts the WordPress Quick Edit open event to pre-fill the
+ * Sort Order and Excerpt fields with current post values via AJAX.
+ * After a Quick Edit save, updates the Sort Order cell in the list
+ * table without a full page reload.
  *
- * Responsibilities:
- *  1. Intercepts inlineEditPost.edit() to fire an AJAX request that
- *     fetches current menu_order and post_excerpt values for the post
- *     or page being edited, then pre-fills the Quick Edit fields.
- *  2. After the user clicks Update on a Post, polls for the post row to
- *     reappear and writes the new Sort Order value back into the list
- *     table cell so the page reflects the change without a full reload.
- *     (Pages do not have a Sort Order cell — no polling needed.)
- *
- * Dependencies: jquery, inline-edit-post (both registered by WordPress core).
- * Localised object: tiaaQE { ajaxurl, nonce }
- *
- * @package   TIAAQuickEdit
- * @since     1.0.0
- * @version   1.5.1
+ * @package TIAAQuickEdit
+ * @since   1.0.0
+ * @version 1.5.2
  */
 
 jQuery( function ( $ ) {
 
 	/**
-	 * Safety guard — bail immediately if inlineEditPost is not available.
+	 * Safety guard — bail if not on a list screen.
 	 *
 	 * inlineEditPost is registered by WordPress core only on the Posts and
 	 * Pages list screens (edit.php). If this script somehow loads on another
@@ -33,9 +23,9 @@ jQuery( function ( $ ) {
 	 * interrupt other scripts on the page, including Elementor's own
 	 * initialisation sequence.
 	 *
-	 * The PHP enqueue hook is the primary guard (edit.php check). This is a
-	 * belt-and-suspenders defence in case the script loads in an unexpected
-	 * context.
+	 * The PHP enqueue hook is the primary guard (edit.php check + $typenow
+	 * allowlist). This is belt-and-suspenders defence in case the script
+	 * loads in an unexpected context.
 	 *
 	 * @since 1.5.1
 	 */
@@ -44,116 +34,54 @@ jQuery( function ( $ ) {
 	}
 
 	/**
-	 * Resolves a WordPress post ID from the argument passed to inlineEditPost.edit().
+	 * Resolve a WordPress post ID from the argument passed to
+	 * inlineEditPost.edit(). WordPress passes either the raw post ID
+	 * (number) or the row <tr> DOM element, depending on context.
 	 *
-	 * WordPress 6.7+ passes the clicked button element rather than a numeric ID.
-	 * Earlier versions pass the numeric ID directly. This helper handles both forms.
+	 * @since 1.0.0
 	 *
-	 * @since 1.3.0
-	 *
-	 * @param {number|Element} id Numeric post ID or the Quick Edit trigger button element.
-	 * @return {number} Resolved post ID, or NaN if resolution fails.
+	 * @param {number|HTMLElement} id - Raw ID or row element.
+	 * @returns {number} Resolved integer post ID, or 0 on failure.
 	 */
 	function resolvePostId( id ) {
 		if ( typeof id === 'object' ) {
-			var $row = $( id ).closest( 'tr[id^="post-"]' );
-			if ( $row.length ) {
-				return parseInt( $row.attr( 'id' ).replace( 'post-', '' ), 10 );
-			}
-			return NaN;
+			var attr = $( id ).attr( 'id' ) || '';
+			return parseInt( attr.replace( 'post-', '' ), 10 ) || 0;
 		}
-		return parseInt( id, 10 );
+		return parseInt( id, 10 ) || 0;
 	}
 
 	/**
-	 * Updates the Sort Order column cell in the post list table row.
+	 * Wrap inlineEditPost.edit to intercept Quick Edit open.
 	 *
-	 * Called after a successful Quick Edit save on a Post to reflect the new
-	 * value without requiring a full page reload. Not used for Pages (which
-	 * have no Sort Order column).
-	 *
-	 * If newValue is blank, null, or undefined the cell is left unchanged,
-	 * because a blank submission means "make no change".
-	 *
-	 * @since 1.4.0
-	 *
-	 * @param {number} postId   WordPress post ID whose row should be updated.
-	 * @param {string} newValue The menu_order value submitted in the Quick Edit form.
-	 * @return {void}
-	 */
-	function updateSortOrderCell( postId, newValue ) {
-		var $cell = $( '#post-' + postId ).find( '.column-tiaa_sort_order' );
-		if ( ! $cell.length ) {
-			return;
-		}
-
-		if ( newValue === '' || newValue === null || newValue === undefined ) {
-			return;
-		}
-
-		var numVal = parseInt( newValue, 10 );
-		var $span  = $cell.find( '.tiaa-sort-order-value' );
-
-		if ( $span.length ) {
-			$span.text( numVal ).attr( 'data-order', numVal );
-		} else {
-			$cell.html(
-				'<span class="tiaa-sort-order-value" data-order="' + numVal + '">' + numVal + '</span>'
-			);
-		}
-	}
-
-	/**
-	 * Wraps inlineEditPost.edit() to add TIAA Quick Edit field population.
-	 *
-	 * When Quick Edit opens for a Post:
-	 *  - Hides and clears the TIAA fieldset to prevent stale values.
-	 *  - Fires an AJAX request to fetch current values.
-	 *  - Shows the fieldset and pre-fills fields if the post is a target.
-	 *  - Attaches a one-time Update button listener to update the Sort Order
-	 *    cell after save without a full page reload.
-	 *
-	 * When Quick Edit opens for a Page:
-	 *  - The fieldset is always visible (no display:none hiding needed).
-	 *  - Fires an AJAX request to fetch the current excerpt.
-	 *  - Pre-fills the excerpt textarea.
-	 *  - No Sort Order cell polling needed.
-	 *
-	 * Uses .one() on the Update listener so only a single handler fires
-	 * per Quick Edit open, preventing listener stacking on repeated opens.
+	 * Fires an AJAX request to retrieve the current menu_order and
+	 * post_excerpt values, then populates the Quick Edit fields.
 	 *
 	 * @since 1.0.0
-	 * @updated 1.5.0 — handles page post type.
-	 *
-	 * @param {number|Element} id Post/page ID or trigger button (see resolvePostId).
-	 * @return {void}
 	 */
-	var $wp_inline_edit = inlineEditPost.edit;
+	var _originalEdit = inlineEditPost.edit;
 
 	inlineEditPost.edit = function ( id ) {
+		// Call the original WordPress handler first.
+		_originalEdit.apply( this, arguments );
 
-		$wp_inline_edit.apply( this, arguments );
-
-		var postId = resolvePostId( id );
-		if ( ! postId || isNaN( postId ) ) {
+		var postId   = resolvePostId( id );
+		if ( ! postId ) {
 			return;
 		}
 
 		var $editRow  = $( '#edit-' + postId );
 		var $fieldset = $editRow.find( '.tiaa-qe-fieldset' );
 
-		// Detect whether this is a page based on the fieldset CSS class added
-		// by the page-specific PHP Quick Edit callback.
-		var isPage = $fieldset.hasClass( 'tiaa-qe-fieldset-page' );
-
-		// For posts: hide fieldset and clear fields until AJAX confirms target status.
-		// For pages: fieldset is always visible; just clear the textarea to prevent
-		// stale values from a previous Quick Edit session appearing briefly.
-		if ( ! isPage ) {
-			$fieldset.hide();
-			$editRow.find( 'input.tiaa-menu-order' ).val( '' );
+		// No fieldset means this post type / category doesn't get our fields.
+		if ( ! $fieldset.length ) {
+			return;
 		}
-		$editRow.find( 'textarea.tiaa-post-excerpt' ).val( '' );
+
+		// Reset fields before populating so stale values don't persist
+		// if the user opens Quick Edit on a second row without refreshing.
+		$fieldset.find( 'input[name="tiaa_menu_order"]' ).val( '' );
+		$fieldset.find( 'textarea[name="tiaa_post_excerpt"]' ).val( '' );
 
 		// Fetch current values from the server.
 		$.post(
@@ -161,66 +89,67 @@ jQuery( function ( $ ) {
 			{
 				action  : 'tiaa_qe_get_post_data',
 				post_id : postId,
-				nonce   : tiaaQE.nonce
-			},
-			function ( response ) {
-				if ( ! response || ! response.success || ! response.data ) {
-					return;
-				}
-
-				var data = response.data;
-
-				if ( isPage ) {
-					// Pages: fieldset always shown; just pre-fill excerpt.
-					if ( data.excerpt ) {
-						$editRow.find( 'textarea.tiaa-post-excerpt' ).val( data.excerpt );
-					}
-				} else {
-					// Posts: show fieldset only if in a target category.
-					if ( data.is_target ) {
-						$fieldset.show();
-
-						if ( data.menu_order !== null && data.menu_order !== undefined ) {
-							$editRow.find( 'input.tiaa-menu-order' ).val( data.menu_order );
-						}
-					}
-
-					if ( data.excerpt ) {
-						$editRow.find( 'textarea.tiaa-post-excerpt' ).val( data.excerpt );
-					}
-				}
+				nonce   : tiaaQE.nonce,
 			}
-		);
+		).done( function ( response ) {
+			if ( ! response || ! response.success ) {
+				return;
+			}
 
-		// Posts only: poll after Update to refresh the Sort Order cell without reload.
-		// Pages have no Sort Order column so polling is skipped entirely.
-		if ( ! isPage ) {
-			/**
-			 * Listens for the Quick Edit Update button click on Posts.
-			 *
-			 * Captures the menu_order value at click time, then polls until
-			 * WordPress's own inline-save AJAX completes and the post row
-			 * reappears, at which point the Sort Order cell is updated.
-			 *
-			 * Polling interval: 100 ms. Maximum attempts: 20 (2 seconds total).
-			 */
-			$editRow.find( '.save' ).one( 'click', function () {
-				var submittedOrder = $editRow.find( 'input.tiaa-menu-order' ).val().trim();
+			var data = response.data;
 
-				var attempts = 0;
-				var interval = setInterval( function () {
-					attempts++;
-					var $postRow = $( '#post-' + postId );
+			// Only populate Sort Order if a non-zero value is stored.
+			var order = parseInt( data.menu_order, 10 );
+			if ( order > 0 ) {
+				$fieldset.find( 'input[name="tiaa_menu_order"]' ).val( order );
+			}
 
-					if ( $postRow.is( ':visible' ) || attempts > 20 ) {
-						clearInterval( interval );
-						if ( submittedOrder !== '' ) {
-							updateSortOrderCell( postId, submittedOrder );
-						}
-					}
-				}, 100 );
-			} );
-		}
+			// Always populate Excerpt (including empty — user may want to clear it).
+			$fieldset.find( 'textarea[name="tiaa_post_excerpt"]' ).val( data.post_excerpt || '' );
+
+			// Hide Sort Order field for posts outside target categories.
+			// Pages always show both fields.
+			if ( ! data.is_target ) {
+				$fieldset.find( '.tiaa-qe-sort-label' ).hide();
+			} else {
+				$fieldset.find( '.tiaa-qe-sort-label' ).show();
+			}
+		} );
 	};
+
+	/**
+	 * Update the Sort Order cell after a successful Quick Edit save.
+	 *
+	 * WordPress replaces the row HTML on save. We listen for the AJAX
+	 * response and update the cell from the submitted field value so the
+	 * user sees the new number immediately without a page reload.
+	 *
+	 * @since 1.4.0
+	 */
+	$( document ).ajaxSuccess( function ( event, xhr, settings ) {
+		// Only act on the inline-save action.
+		if ( settings.data && settings.data.indexOf( 'action=inline-save' ) === -1 ) {
+			return;
+		}
+
+		// Parse the saved Sort Order from the form data that was submitted.
+		var params   = {};
+		( settings.data || '' ).split( '&' ).forEach( function ( pair ) {
+			var parts = pair.split( '=' );
+			params[ decodeURIComponent( parts[0] ) ] = decodeURIComponent( parts[1] || '' );
+		} );
+
+		var postId = parseInt( params.post_ID, 10 );
+		var order  = params.tiaa_menu_order;
+
+		if ( ! postId || order === undefined || '' === order ) {
+			return;
+		}
+
+		var displayValue = parseInt( order, 10 ) === 0 ? '&mdash;' : parseInt( order, 10 );
+
+		// WordPress replaces the row HTML after save — target the refreshed row.
+		$( '#post-' + postId + ' .tiaa-ord' ).html( displayValue );
+	} );
 
 } );

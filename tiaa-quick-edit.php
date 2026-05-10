@@ -1,65 +1,360 @@
 <?php
 /**
- * Plugin Name:       TIAA Quick Edit Fields
- * Plugin URI:        https://github.com/tiaa-forum-org/tiaa-wpsite-v3
- * Description:       Adds Sort Order (menu_order) and Excerpt fields to the WordPress Quick Edit
- *                    panel for posts in the hot-topics, discourse-categories, and other-orgs
- *                    categories. Also adds an Excerpt field to the Pages Quick Edit panel (all
- *                    pages), and adds a sortable Sort Order column for menu_order to the Posts list table.
- * Version:           1.5.2
- * Requires at least: 6.0
- * Requires PHP:      8.0
- * Author:            Lew Grothe, TIAA Forum Admin Platform Sub-team
- * Author URI:        https://tiaa-forum.org
- * License:           GPL-2.0+
- * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain:       tiaa-quick-edit
+ * Plugin Name:        TIAA Quick Edit Fields
+ * Plugin URI:         https://github.com/tiaa-forum-org/tiaa-quick-edit
+ * Description:        Adds Sort Order (menu_order) and Excerpt fields to the WordPress Quick Edit panel for posts in the Hot Topics and Discourse Categories categories, and for all Pages. Adds a sortable Sort Order column to the Posts and Pages list tables.
+ * Version:            1.5.2
+ * Requires at least:  6.5
+ * Requires PHP:       8.2
+ * Author:             Lew Grothe, TIAA Forum Admin Platform sub-team
+ * Author URI:         https://tiaa-forum.org
+ * License:            GPL-2.0+
+ * License URI:        https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain:        tiaa-quick-edit
  *
- * @package           TIAAQuickEdit
+ * @package TIAAQuickEdit
  */
 
+// Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
 /**
- * Category slugs whose posts will show TIAA Quick Edit fields.
- *
- * Sort Order and Excerpt fields only appear in the Quick Edit panel for posts
- * that belong to at least one of these category slugs.
- *
- * TO ADD a category: append its slug, e.g. 'resources'
- * TO REMOVE:         delete its line
- *
- * Slugs must match exactly what is shown in Posts > Categories > Slug in WP Admin.
+ * Category slugs that get the Sort Order + Excerpt Quick Edit fields.
+ * Posts outside these categories, and all Pages, get the Excerpt field only.
  *
  * @since 1.0.0
  */
-const TIAA_QE_CATEGORY_SLUGS = array(
-	'hot-topics',
-	'discourse-categories',
-	'other-orgs',
-);
+define( 'TIAA_QE_CATEGORY_SLUGS', array( 'hot-topics', 'discourse-categories' ) );
 
-
-/* ═══════════════════════════════════════════════════════════════════
- * HELPER
- * ═══════════════════════════════════════════════════════════════════ */
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. COLUMN REGISTRATION — Posts list and Pages list
+//
+// FIX v1.5.2: Replaced the broad manage_posts_columns / manage_posts_custom_column
+// hooks (which fire for ALL post types, including elementor_library, product, etc.)
+// with post-type-specific hooks that only fire for 'post' and 'page'.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Determines whether a post belongs to one of the target categories.
+ * Add the Sort Order column to the Posts list table.
+ *
+ * Uses the post-type-specific filter to avoid injecting the column into
+ * Elementor templates, WooCommerce products, or any other custom post type.
+ *
+ * @since 1.0.0
+ * @updated 1.5.2 — Changed from manage_posts_columns to manage_post_posts_columns.
+ *
+ * @param array $columns Existing columns.
+ * @return array Modified columns with Sort Order inserted after Title.
+ */
+add_filter( 'manage_post_posts_columns', 'tiaa_qe_add_columns' );
+add_filter( 'manage_page_posts_columns', 'tiaa_qe_add_columns' );
+function tiaa_qe_add_columns( array $columns ): array {
+	$new = array();
+	foreach ( $columns as $key => $label ) {
+		$new[ $key ] = $label;
+		if ( 'title' === $key ) {
+			$new['tiaa_sort_order'] = __( 'Sort Order', 'tiaa-quick-edit' );
+		}
+	}
+	return $new;
+}
+
+/**
+ * Render the Sort Order column value for a given post.
+ *
+ * Shows the menu_order value for posts in target categories.
+ * Shows an em-dash for all other posts (Pages always show their value).
+ *
+ * Uses the post-type-specific action to avoid rendering on Elementor templates,
+ * WooCommerce products, or any other custom post type list.
+ *
+ * @since 1.0.0
+ * @updated 1.5.2 — Changed from manage_posts_custom_column to manage_post_posts_custom_column
+ *                  and added manage_page_posts_custom_column for Pages.
+ *
+ * @param string $column  Current column key.
+ * @param int    $post_id Current post ID.
+ * @return void
+ */
+add_action( 'manage_post_posts_custom_column', 'tiaa_qe_render_column', 10, 2 );
+add_action( 'manage_page_posts_custom_column', 'tiaa_qe_render_column', 10, 2 );
+function tiaa_qe_render_column( string $column, int $post_id ): void {
+	if ( 'tiaa_sort_order' !== $column ) {
+		return;
+	}
+
+	$post_type = get_post_type( $post_id );
+
+	// For standard posts, only show values for target-category posts.
+	if ( 'post' === $post_type && ! tiaa_qe_is_target( $post_id ) ) {
+		echo '<span class="tiaa-na">&mdash;</span>';
+		return;
+	}
+
+	$order = intval( get_post_field( 'menu_order', $post_id ) );
+	echo '<span class="tiaa-ord" data-order="' . esc_attr( $order ) . '">'
+		. ( 0 === $order ? '&mdash;' : esc_html( $order ) )
+		. '</span>';
+}
+
+/**
+ * Make the Sort Order column sortable on the Posts and Pages list tables.
+ *
+ * @since 1.0.0
+ *
+ * @param array $columns Sortable columns.
+ * @return array Modified sortable columns.
+ */
+add_filter( 'manage_edit-post_sortable_columns', 'tiaa_qe_sortable_columns' );
+add_filter( 'manage_edit-page_sortable_columns', 'tiaa_qe_sortable_columns' );
+function tiaa_qe_sortable_columns( array $columns ): array {
+	$columns['tiaa_sort_order'] = 'menu_order';
+	return $columns;
+}
+
+/**
+ * Handle the menu_order orderby on the admin Posts / Pages list query.
+ *
+ * @since 1.0.0
+ *
+ * @param WP_Query $query The current WP_Query instance.
+ * @return void
+ */
+add_action( 'pre_get_posts', 'tiaa_qe_sort_by_menu_order' );
+function tiaa_qe_sort_by_menu_order( WP_Query $query ): void {
+	if ( ! is_admin() || ! $query->is_main_query() ) {
+		return;
+	}
+	if ( 'menu_order' === $query->get( 'orderby' ) ) {
+		$query->set( 'orderby', 'menu_order' );
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. QUICK EDIT FIELDS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Inject the TIAA Sort Order and Excerpt fields into the Quick Edit panel.
+ *
+ * Triggered only when our custom column is rendered, ensuring the fields
+ * appear exactly once per Quick Edit row.
+ *
+ * @since 1.0.0
+ *
+ * @param string $column_name The current column name.
+ * @param string $post_type   The current post type.
+ * @return void
+ */
+add_action( 'quick_edit_custom_box', 'tiaa_qe_quick_edit_fields', 10, 2 );
+function tiaa_qe_quick_edit_fields( string $column_name, string $post_type ): void {
+	if ( 'tiaa_sort_order' !== $column_name ) {
+		return;
+	}
+
+	wp_nonce_field( 'tiaa_qe_save', 'tiaa_qe_nonce' );
+	?>
+	<fieldset class="inline-edit-col-right tiaa-qe-fieldset">
+		<div class="inline-edit-col">
+			<div class="tiaa-qe-label-hdr"><?php esc_html_e( 'TIAA Fields', 'tiaa-quick-edit' ); ?></div>
+
+			<label class="tiaa-qe-label tiaa-qe-sort-label">
+				<span class="title"><?php esc_html_e( 'Sort Order', 'tiaa-quick-edit' ); ?></span>
+				<span class="tiaa-qe-hint"><?php esc_html_e( 'Lower = higher on page (e.g. 10, 20, 30). Leave blank to keep current value.', 'tiaa-quick-edit' ); ?></span>
+				<input type="number"
+				       name="tiaa_menu_order"
+				       class="tiaa-qe-input"
+				       min="0"
+				       step="1"
+				       placeholder="<?php esc_attr_e( 'e.g. 10', 'tiaa-quick-edit' ); ?>" />
+			</label>
+
+			<label class="tiaa-qe-label tiaa-qe-excerpt-label">
+				<span class="title"><?php esc_html_e( 'Excerpt', 'tiaa-quick-edit' ); ?></span>
+				<span class="tiaa-qe-hint"><?php esc_html_e( 'Short description shown on cards. Plain text only.', 'tiaa-quick-edit' ); ?></span>
+				<textarea name="tiaa_post_excerpt"
+				          class="tiaa-qe-textarea"
+				          rows="3"
+				          placeholder="<?php esc_attr_e( 'Short description for this card…', 'tiaa-quick-edit' ); ?>"></textarea>
+			</label>
+		</div>
+	</fieldset>
+	<?php
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. SAVE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Save Sort Order and Excerpt values submitted via Quick Edit.
+ *
+ * Validates nonce and capabilities before writing. Sort Order is only
+ * written if a non-empty value is submitted (blank = no change).
+ *
+ * @since 1.0.0
+ *
+ * @param int $post_id The post ID being saved.
+ * @return void
+ */
+add_action( 'save_post', 'tiaa_qe_save_post' );
+function tiaa_qe_save_post( int $post_id ): void {
+	// Bail on autosave and revisions.
+	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+		return;
+	}
+	if ( wp_is_post_revision( $post_id ) ) {
+		return;
+	}
+
+	// Nonce check.
+	if ( ! isset( $_POST['tiaa_qe_nonce'] )
+		|| ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['tiaa_qe_nonce'] ) ), 'tiaa_qe_save' ) ) {
+		return;
+	}
+
+	// Capability check.
+	if ( ! current_user_can( 'edit_post', $post_id ) ) {
+		return;
+	}
+
+	// Save Sort Order — only if a value was submitted (blank = no change).
+	if ( isset( $_POST['tiaa_menu_order'] ) && '' !== $_POST['tiaa_menu_order'] ) {
+		$order = absint( $_POST['tiaa_menu_order'] );
+		// Use a direct DB update to avoid triggering save_post recursion.
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			array( 'menu_order' => $order ),
+			array( 'ID' => $post_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+	}
+
+	// Save Excerpt — always save, including blank (clearing is intentional).
+	if ( isset( $_POST['tiaa_post_excerpt'] ) ) {
+		$excerpt = sanitize_textarea_field( wp_unslash( $_POST['tiaa_post_excerpt'] ) );
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->posts,
+			array( 'post_excerpt' => $excerpt ),
+			array( 'ID' => $post_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. AJAX — Pre-fill Quick Edit fields with current values
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * AJAX handler: return current menu_order and post_excerpt for a post.
+ *
+ * Called by tiaa-quick-edit.js when Quick Edit opens so the fields
+ * pre-fill with existing data rather than appearing blank.
+ *
+ * @since 1.0.0
+ *
+ * @return void Outputs JSON and exits.
+ */
+add_action( 'wp_ajax_tiaa_qe_get_post_data', 'tiaa_qe_ajax_get_post_data' );
+function tiaa_qe_ajax_get_post_data(): void {
+	check_ajax_referer( 'tiaa_qe_nonce', 'nonce' );
+
+	$post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
+	if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
+		wp_send_json_error( array( 'message' => 'Invalid post or insufficient permissions.' ) );
+	}
+
+	$post = get_post( $post_id );
+	if ( ! $post ) {
+		wp_send_json_error( array( 'message' => 'Post not found.' ) );
+	}
+
+	wp_send_json_success( array(
+		'menu_order'   => intval( $post->menu_order ),
+		'post_excerpt' => $post->post_excerpt,
+		'is_target'    => tiaa_qe_is_target( $post_id ),
+	) );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. ENQUEUE SCRIPTS AND STYLES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Enqueue the Quick Edit JS and CSS on the Posts and Pages list screens only.
+ *
+ * Scoped to edit.php with an explicit post-type allowlist so the script
+ * never loads in the Elementor editor or on any other admin page.
+ *
+ * @since 1.0.0
+ * @updated 1.5.1 — Tightened $typenow check; treat empty $typenow as 'post'
+ *                  (safe on edit.php when no post_type param is in the URL).
+ *
+ * @param string $hook Current admin page hook suffix.
+ * @return void
+ */
+add_action( 'admin_enqueue_scripts', 'tiaa_qe_enqueue_scripts' );
+function tiaa_qe_enqueue_scripts( string $hook ): void {
+	// Only load on the list screens, never on post.php (Elementor editor).
+	if ( 'edit.php' !== $hook ) {
+		return;
+	}
+
+	global $typenow;
+	// $typenow can be empty on edit.php when no post_type param is in the URL
+	// (WordPress defaults to 'post'). Treat empty as 'post' — safe on edit.php.
+	if ( ! empty( $typenow ) && ! in_array( $typenow, array( 'post', 'page' ), true ) ) {
+		return;
+	}
+
+	wp_enqueue_script(
+		'tiaa-quick-edit',
+		plugin_dir_url( __FILE__ ) . 'tiaa-quick-edit.js',
+		array( 'jquery', 'inline-edit-post' ),
+		filemtime( plugin_dir_path( __FILE__ ) . 'tiaa-quick-edit.js' ),
+		true
+	);
+
+	wp_localize_script(
+		'tiaa-quick-edit',
+		'tiaaQE',
+		array(
+			'ajaxurl' => admin_url( 'admin-ajax.php' ),
+			'nonce'   => wp_create_nonce( 'tiaa_qe_nonce' ),
+		)
+	);
+
+	wp_enqueue_style(
+		'tiaa-quick-edit',
+		plugin_dir_url( __FILE__ ) . 'tiaa-quick-edit.css',
+		array(),
+		filemtime( plugin_dir_path( __FILE__ ) . 'tiaa-quick-edit.css' )
+	);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Check whether a post belongs to one of the TIAA Quick Edit target categories.
  *
  * Uses wp_get_post_terms() rather than has_category() because has_category()
- * requires the global $post to be set, which is not guaranteed on the admin
- * list screen or during AJAX requests.
+ * returns false in AJAX and admin list table contexts.
  *
- * @param int $post_id WordPress post ID to test.
+ * @since 1.1.0
  *
- * @return bool True if the post is in at least one TIAA_QE_CATEGORY_SLUGS category.
- *@since 1.0.0
- *
+ * @param int $post_id Post ID to check.
+ * @return bool True if the post is in a target category.
  */
-function tiaa_qe_is_target_post( int $post_id ): bool {
+function tiaa_qe_is_target( int $post_id ): bool {
 	$terms = wp_get_post_terms( $post_id, 'category', array( 'fields' => 'slugs' ) );
 	if ( is_wp_error( $terms ) || empty( $terms ) ) {
 		return false;
@@ -70,420 +365,4 @@ function tiaa_qe_is_target_post( int $post_id ): bool {
 		}
 	}
 	return false;
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 1. POSTS LIST TABLE COLUMN
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * Registers the Sort Order column in the Posts list table.
- *
- * Inserts the column immediately after the Title column so it is
- * visible at a glance when browsing the post list.
- *
- * @since 1.0.0
- *
- * @param array $columns Existing column definitions.
- * @return array Modified column definitions with Sort Order inserted after Title.
- */
-add_filter( 'manage_posts_columns', 'tiaa_qe_add_columns' );
-function tiaa_qe_add_columns( $columns ): array {
-	$new = array();
-	foreach ( $columns as $key => $label ) {
-		$new[ $key ] = $label;
-		if ( $key === 'title' ) {
-			$new['tiaa_sort_order'] = 'Sort Order';
-		}
-	}
-	return $new;
-}
-
-/**
- * Renders the Sort Order column cell for each post row.
- *
- * Displays a styled badge with the current menu_order value for posts in
- * target categories; shows an em dash for all other posts.
- *
- * @since 1.0.0
- *
- * @param string $column  Column identifier being rendered.
- * @param int    $post_id WordPress post ID for the current row.
- * @return void
- */
-add_action( 'manage_posts_custom_column', 'tiaa_qe_render_column', 10, 2 );
-function tiaa_qe_render_column( $column, $post_id ): void {
-	if ( $column !== 'tiaa_sort_order' ) {
-		return;
-	}
-
-	if ( ! tiaa_qe_is_target_post( $post_id ) ) {
-		echo '<span class="tiaa-sort-order-na">&#8212;</span>';
-		return;
-	}
-
-	$raw     = intval( get_post_field( 'menu_order', $post_id ) );
-	$display = ( $raw === 0 ) ? '&#8212;' : esc_html( $raw );
-	echo '<span class="tiaa-sort-order-value" data-order="' . esc_attr( $raw ) . '">' . $display . '</span>';
-}
-
-/**
- * Makes the Sort Order column sortable in the Posts list table.
- *
- * Registers the column against the native menu_order query parameter so
- * WordPress handles the ORDER BY automatically.
- *
- * @since 1.0.0
- *
- * @param array $cols Existing sortable column definitions.
- * @return array Modified sortable columns with tiaa_sort_order added.
- */
-add_filter( 'manage_edit-post_sortable_columns', 'tiaa_qe_sortable_columns' );
-function tiaa_qe_sortable_columns( $cols ) {
-	$cols['tiaa_sort_order'] = 'menu_order';
-	return $cols;
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 1b. PAGES LIST TABLE COLUMN
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * Registers the Excerpt column in the Pages list table.
- *
- * Inserts the column immediately after the Title column to make the
- * excerpt status visible at a glance when browsing the page list.
- *
- * @since 1.5.0
- *
- * @param array $columns Existing column definitions.
- * @return array Modified column definitions with Excerpt inserted after Title.
- */
-add_filter( 'manage_pages_columns', 'tiaa_qe_add_page_columns' );
-function tiaa_qe_add_page_columns( $columns ): array {
-	$new = array();
-	foreach ( $columns as $key => $label ) {
-		$new[ $key ] = $label;
-		if ( $key === 'title' ) {
-			$new['tiaa_page_excerpt'] = 'Excerpt';
-		}
-	}
-	return $new;
-}
-
-/**
- * Renders the Excerpt column cell for each page row.
- *
- * Displays a truncated excerpt (60 chars) if one exists, or an em dash
- * if the page has no excerpt set — making it easy to spot pages that
- * still need one.
- *
- * @since 1.5.0
- *
- * @param string $column  Column identifier being rendered.
- * @param int    $post_id WordPress post ID for the current row.
- * @return void
- */
-add_action( 'manage_pages_custom_column', 'tiaa_qe_render_page_column', 10, 2 );
-function tiaa_qe_render_page_column( $column, $post_id ): void {
-	if ( $column !== 'tiaa_page_excerpt' ) {
-		return;
-	}
-	$excerpt = get_post_field( 'post_excerpt', $post_id );
-	if ( $excerpt ) {
-		echo '<span class="tiaa-page-excerpt-preview">' . esc_html( mb_strimwidth( $excerpt, 0, 60, '…' ) ) . '</span>';
-	} else {
-		echo '<span class="tiaa-sort-order-na">&#8212;</span>';
-	}
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 2. QUICK EDIT FIELDS — POSTS
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * Renders the TIAA Quick Edit fieldset inside the WordPress Quick Edit panel
- * for Posts.
- *
- * Hooked to quick_edit_custom_box, which fires once per registered custom
- * column. The fieldset is initially hidden (display:none) and shown via JS
- * only for posts in target categories after an AJAX check confirms membership.
- *
- * A nonce field is included for save_post verification.
- *
- * @since 1.0.0
- *
- * @param string $column_name The column identifier that triggered this callback.
- * @param string $post_type   The current post type.
- * @return void
- */
-add_action( 'quick_edit_custom_box', 'tiaa_qe_quick_edit_fields', 10, 2 );
-function tiaa_qe_quick_edit_fields( $column_name, $post_type ): void {
-	if ( $post_type === 'page' ) {
-		return; // Pages handled separately below.
-	}
-	if ( $column_name !== 'tiaa_sort_order' ) {
-		return;
-	}
-	wp_nonce_field( 'tiaa_qe_save', 'tiaa_qe_nonce' );
-	?>
-	<fieldset class="inline-edit-col-right tiaa-qe-fieldset" style="display:none;">
-		<div class="inline-edit-col">
-			<div class="tiaa-qe-section-label">TIAA Fields</div>
-
-			<label class="tiaa-qe-label">
-				<span class="title">Sort Order</span>
-				<span class="tiaa-qe-hint">Controls card display order. Lower numbers appear first (e.g., 10, 20, 30). Leave blank to make no change.</span>
-				<input type="number"
-				       name="tiaa_menu_order"
-				       class="tiaa-menu-order"
-				       value=""
-				       placeholder="not set"
-				       min="0"
-				       step="1" />
-			</label>
-
-			<label class="tiaa-qe-label">
-				<span class="title">Excerpt</span>
-				<span class="tiaa-qe-hint">Short summary shown on cards and archive pages.</span>
-				<textarea name="tiaa_post_excerpt"
-				          class="tiaa-post-excerpt"
-				          rows="3"></textarea>
-			</label>
-		</div>
-	</fieldset>
-	<?php
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 2b. QUICK EDIT FIELDS — PAGES
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * Renders the TIAA Excerpt Quick Edit field inside the WordPress Quick Edit
- * panel for Pages.
- *
- * Hooked to quick_edit_custom_box, triggered by the tiaa_page_excerpt column.
- * The Excerpt field is shown for all pages — no category gate is needed.
- *
- * Note: Sort Order is intentionally omitted for pages. WordPress already
- * exposes menu_order natively via the Page Attributes panel.
- *
- * The fieldset is always visible (no display:none) because pages do not need
- * the JS category check that posts require.
- *
- * @since 1.5.0
- *
- * @param string $column_name The column identifier that triggered this callback.
- * @param string $post_type   The current post type.
- * @return void
- */
-add_action( 'quick_edit_custom_box', 'tiaa_qe_page_quick_edit_fields', 10, 2 );
-function tiaa_qe_page_quick_edit_fields( $column_name, $post_type ): void {
-	if ( $post_type !== 'page' ) {
-		return;
-	}
-	if ( $column_name !== 'tiaa_page_excerpt' ) {
-		return;
-	}
-	wp_nonce_field( 'tiaa_qe_save', 'tiaa_qe_nonce' );
-	?>
-	<fieldset class="inline-edit-col-right tiaa-qe-fieldset tiaa-qe-fieldset-page">
-		<div class="inline-edit-col">
-			<div class="tiaa-qe-section-label">TIAA Fields</div>
-
-			<label class="tiaa-qe-label">
-				<span class="title">Excerpt</span>
-				<span class="tiaa-qe-hint">Used by Yoast SEO and can be surfaced in Elementor via the Post Excerpt dynamic tag.</span>
-				<textarea name="tiaa_post_excerpt"
-				          class="tiaa-post-excerpt tiaa-page-excerpt"
-				          rows="4"></textarea>
-			</label>
-		</div>
-	</fieldset>
-	<?php
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 3. SAVE
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * Persists Sort Order and Excerpt values submitted via Quick Edit.
- *
- * Hooked to save_post. Validates the nonce and capability before writing.
- * Handles both 'post' and 'page' post types.
- *
- * menu_order is updated only for posts in target categories and only when a
- * non-empty value is submitted (blank = no change). It is never updated for
- * pages — WordPress manages page order natively.
- *
- * post_excerpt is updated for all posts and pages when the nonce is present,
- * allowing it to be cleared by submitting an empty textarea.
- *
- * Uses $wpdb->update() directly rather than wp_update_post() to avoid
- * re-triggering save_post and causing an infinite loop.
- *
- * @since 1.0.0
- * @updated 1.5.0 — extended to handle 'page' post type.
- *
- * @param int     $post_id WordPress post ID being saved.
- * @param WP_Post $post    Full post object.
- * @return void
- */
-add_action( 'save_post', 'tiaa_qe_save_quick_edit', 10, 2 );
-function tiaa_qe_save_quick_edit( $post_id, $post ): void {
-	if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
-		return;
-	}
-	if ( wp_is_post_revision( $post_id ) ) {
-		return;
-	}
-	if ( ! in_array( $post->post_type, array( 'post', 'page' ), true ) ) {
-		return;
-	}
-	if ( ! isset( $_POST['tiaa_qe_nonce'] ) ) {
-		return;
-	}
-	if ( ! wp_verify_nonce( $_POST['tiaa_qe_nonce'], 'tiaa_qe_save' ) ) {
-		return;
-	}
-	if ( ! current_user_can( 'edit_post', $post_id ) ) {
-		return;
-	}
-
-	global $wpdb;
-
-	// Update menu_order — target posts only; blank = no change; never for pages.
-	if ( $post->post_type === 'post' && tiaa_qe_is_target_post( $post_id ) && isset( $_POST['tiaa_menu_order'] ) ) {
-		$v = trim( $_POST['tiaa_menu_order'] );
-		if ( $v !== '' ) {
-			$wpdb->update(
-				$wpdb->posts,
-				array( 'menu_order' => intval( $v ) ),
-				array( 'ID' => $post_id ),
-				array( '%d' ),
-				array( '%d' )
-			);
-		}
-	}
-
-	// Update post_excerpt — all posts and pages; allows clearing the field.
-	if ( isset( $_POST['tiaa_post_excerpt'] ) ) {
-		$wpdb->update(
-			$wpdb->posts,
-			array( 'post_excerpt' => sanitize_textarea_field( wp_unslash( $_POST['tiaa_post_excerpt'] ) ) ),
-			array( 'ID' => $post_id ),
-			array( '%s' ),
-			array( '%d' )
-		);
-	}
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 4. ENQUEUE
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * Enqueues the plugin's JS and CSS on the Posts and Pages list screens.
- *
- * Loads tiaa-quick-edit.js (depends on jquery and inline-edit-post) and
- * tiaa-quick-edit.css on edit.php (Posts) and edit.php?post_type=page (Pages).
- *
- * Also localises tiaaQE with the AJAX URL and a nonce for the
- * tiaa_qe_get_post_data AJAX action.
- *
- * @since 1.0.0
- * @updated 1.5.0 — extended to load on the Pages list screen.
- * @updated 1.5.1 — tightened $typenow check to prevent loading on non-list screens
- *                  such as the Elementor editor, where $typenow can be empty.
- *
- * @param string $hook Current admin page hook suffix.
- * @return void
- */
-add_action( 'admin_enqueue_scripts', 'tiaa_qe_enqueue_scripts' );
-function tiaa_qe_enqueue_scripts( $hook ): void {
-	// Only load on the Posts and Pages list screens (edit.php).
-	// The Elementor editor runs on post.php, not edit.php, so this check
-	// is the primary guard against loading in the wrong context.
-	if ( 'edit.php' !== $hook ) {
-		return;
-	}
-	global $typenow;
-	// $typenow is empty on edit.php when no post_type param is in the URL,
-	// which means WordPress defaults to 'post' — safe to allow.
-	// Use ! empty() so that an empty string passes through (treated as 'post')
-	// but any explicit non-target post type is rejected.
-	if ( ! empty( $typenow ) && ! in_array( $typenow, array( 'post', 'page' ), true ) ) {
-		return;
-	}
-
-	wp_enqueue_script(
-		'tiaa-quick-edit',
-		plugin_dir_url( __FILE__ ) . 'tiaa-quick-edit.js',
-		array( 'jquery', 'inline-edit-post' ),
-		'1.5.1',
-		true
-	);
-	wp_localize_script( 'tiaa-quick-edit', 'tiaaQE', array(
-		'ajaxurl' => admin_url( 'admin-ajax.php' ),
-		'nonce'   => wp_create_nonce( 'tiaa_qe_get_post_data' ),
-	) );
-	wp_enqueue_style(
-		'tiaa-quick-edit',
-		plugin_dir_url( __FILE__ ) . 'tiaa-quick-edit.css',
-		array(),
-		'1.5.1'
-	);
-}
-
-
-/* ═══════════════════════════════════════════════════════════════════
- * 5. AJAX
- * ═══════════════════════════════════════════════════════════════════ */
-
-/**
- * AJAX handler: returns current post/page data for pre-filling Quick Edit fields.
- *
- * Accepts a POST request with post_id and nonce. Responds with JSON containing:
- *   - is_target  (bool)        — whether to show TIAA fields; always true for pages
- *   - excerpt    (string)      — current post_excerpt value
- *   - menu_order (int|null)    — current menu_order value; null when 0 (unset)
- *   - post_type  (string)      — 'post' or 'page'
- *
- * Returns a JSON error and exits on nonce failure or insufficient capability.
- *
- * @since 1.0.0
- * @updated 1.5.0 — returns post_type; is_target always true for pages.
- *
- * @return void Sends JSON response and exits.
- */
-add_action( 'wp_ajax_tiaa_qe_get_post_data', 'tiaa_qe_ajax_get_post_data' );
-function tiaa_qe_ajax_get_post_data(): void {
-	check_ajax_referer( 'tiaa_qe_get_post_data', 'nonce' );
-
-	$post_id = intval( $_POST['post_id'] ?? 0 );
-	if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
-		wp_send_json_error( 'Unauthorised' );
-	}
-
-	$post      = get_post( $post_id );
-	$raw_order = $post ? $post->menu_order : 0;
-	$post_type = $post ? $post->post_type : 'post';
-
-	// Pages always show the excerpt field — no category gate needed.
-	$is_target = $post_type === 'page' || tiaa_qe_is_target_post( $post_id );
-
-	wp_send_json_success( array(
-		'is_target'  => $is_target,
-		'excerpt'    => $post ? $post->post_excerpt : '',
-		'menu_order' => ( $raw_order !== 0 ) ? $raw_order : null,
-		'post_type'  => $post_type,
-	) );
 }
