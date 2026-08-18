@@ -5,7 +5,7 @@
  * Description:        Adds Sort Order (menu_order) and Excerpt fields to the WordPress Quick Edit panel for posts in the Hot Topics and Discourse Categories categories, and for all Pages. Adds a sortable Sort Order column to the Posts and Pages list tables.
  * Version:            1.5.2
  * Requires at least:  6.5
- * Requires PHP:       8.2
+ * Requires PHP:       8.0
  * Author:             Lew Grothe, TIAA Forum Admin Platform sub-team
  * Author URI:         https://tiaa-forum.org
  * License:            GPL-2.0+
@@ -14,6 +14,11 @@
  *
  * @package TIAAQuickEdit
  */
+
+// TODO(2026-08): Requires PHP was lowered from 8.2 to 8.0 to match the
+// oldest PHP version actually running across our environments. Revisit and
+// raise it back once all environments (prod, staging, local dev) are
+// confirmed on 8.2+ -- don't let this linger indefinitely.
 
 // Exit if accessed directly.
 if ( ! defined( 'ABSPATH' ) ) {
