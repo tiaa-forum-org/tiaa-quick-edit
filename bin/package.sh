@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 
-cd ../../
-if [ -d "../../../../tiaa-dev/tiaa-backup/" ]; then
-  TIAA_BACKUP="../../../../tiaa-dev/tiaa-backup"
-else
-  echo "no target directory"
+export PACKAGE_NAME="tiaa-quick-edit"
+# Verify we're running from inside ${PACKAGE_NAME}/bin/
+if [[ "$(basename "$PWD")" != "bin" || "$(basename "$(dirname "$PWD")")" != "${PACKAGE_NAME}" ]]; then
+  echo "error: must be run from ${PACKAGE_NAME}/bin/ as ./package.sh"
   exit 1
 fi
 
+export TIAA_BACKUP="${HOME}/tmp/tiaa-backup/"
+if [ ! -d "${TIAA_BACKUP}" ] || [ ! -w "${TIAA_BACKUP}"  ] ; then
+  echo "no target directory: ${TIAA_BACKUP}"
+  exit 1
+fi
+cd ../../
+
 current_date=$(date "+%y%m%d%H%M")
+rm -f /tmp/${PACKAGE_NAME}.zip
 
-zip -r /tmp/tiaa-quick-edit.zip tiaa-quick-edit -x "*/bin/*" "*/.git/*"
+zip -r /tmp/${PACKAGE_NAME}.zip ${PACKAGE_NAME} -x "*/bin/*" "*/.git/*" "*/CLAUDE.md" "*/.claude/*"
 
-cp /tmp/tiaa-quick-edit.zip "${TIAA_BACKUP}/${current_date}tiaa-quick-edit.zip"
+cp /tmp/${PACKAGE_NAME}.zip "${TIAA_BACKUP}/${current_date}${PACKAGE_NAME}.zip"
 
 cd ${TIAA_BACKUP} || exit
 TIAA_BACKUP_DIR=$(pwd)
-echo "saved in ${TIAA_BACKUP_DIR}/${current_date}tiaa-quick-edit.zip"
+echo "saved in ${TIAA_BACKUP_DIR}/${current_date}${PACKAGE_NAME}.zip"
